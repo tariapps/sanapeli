@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+	<title>Sanapeli</title>
+	<meta charset="utf-8">
+	<link rel="manifest" href="manifest.json">
+	<link rel="icon" type="image/x-icon" href="favicon.png">
+
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		
+	<meta name="mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-status-bar-style" content="black">
+
+	<meta property="og:title" content="Sanapeli">
+	<meta property="og:description" content="Anagrammeja sanoista">
+	
+	
+	<link type="text/css" href="jquery/jquery-ui.css" rel="Stylesheet" />
+	<script type="text/javascript" src="jquery/jquery.min.js"></script>
+	<script type="text/javascript" src="jquery/jquery-ui.min.js"></script>
+	
+	<script src="riffwave.js"></script>
+	<script src="sfxr.js"></script>
+	
+	<script type="text/javascript" src="words_all.js"></script>
+	
+	<link type="text/css" href="style.css?v=30" rel="Stylesheet" />
+</head>
+
+
+<body>
+
+<style>
+/* already set in style.css
+html, body { 
+	margin: 0;
+	height: 100%;
+}
+*/
+#canvas {
+	width: 100%;
+	height: 100%;
+	display: block;
+	position: fixed;
+	top: 0;
+	left: 0;
+	z-index: -9999;
+	background-color:black;
+}
+</style>
+<canvas id="canvas" height="100" width="100"></canvas>
+
+
+
+<div id="game" class="noselect">
+
+	<div id="scores" class="invisible"></div>
+
+	<div id="topbuttons">
+		<div id="mywords" class="button left">Omat</div><div id="give_hint" class="button middle">Vihje</div><div id="new_word" class="button middle">Uusi&nbsp;sana</div>
+		
+	</div>
+	<div id="sanakirja_wrap" class="invisible"><span id="curscore"></span><span id="sanakirja_link"></span></div>
+	
+	<!--<span class="really invisible"></span>-->
+	<div id="current_guess" class="letterbox"></div>
+	
+	<div id="wordlistwrap">
+		<div id="wordlist"></div>
+		<div id="word_from" class="letterbox"></div>
+	</div>
+	
+	<div id="possible_list1">
+		<div id="possible_bar"><div id="bar_done"></div></div>
+		<div id="possible_count1"></div>
+		<div id="possible_count2"></div>
+		
+	</div>
+	<div id="clear_guess_wrap">
+		<div id="changestyle" class="button left">.....</div><div id="randomize" class="button middle">Sekoita</div><div id="clear_guess" class="button middle disabled">Tyhjää</div>
+	</div>
+	
+	<div id="possible_list2">
+		<div id="possible_words" style="display:none"></div>
+	</div>
+
+</div>
+
+
+
+
+<!-- FILE STARTS GAME STARTS BODY STARTS CODE -->
+
+<script>
+
+var WORDS = [];
+var CURWORD = "";
+var CURWORD_UNSUFFLED = "";
+var GUESSED = {}; // GUESSED[CURWORD] = [words made of letters used in CURWORD];
+
+var MIN_LEN = 5;
+var MAX_LEN = 9;
+let MINPOSSIBLE = 20;
+	
+
+	
+
+var GUESS = []; // {letter, fromid}
+var POSSIBLE = [];
+
+var player_score = 0;
+var wordlist_visible = true;
+
+var PLAY_STYLE = 1; // 0 = normal, 1 = scrabble letters randomized.
+
+var CACHED_SOUND_EFFECTS = {};
+
+
+var SOUNDS = {
+	//undo: [1,0,0,0.145,0,0.432,0.468603,0,-0.212,0,0,0,0,0,0.548476,0,0,0,0,0.756234,0,0,0,0,0.061],
+	changestyle: [1,0,0,0.066307,0,0.489649,0.468196,0,0.396335,0,0,0,0,0,0.555478,0,0.623612,0,0,1,0,0,0,0,0.11],
+	showhide: [1,3,0.219375,0.070448,0.264728,0.246,0.940782,0,-0.359019,0,0.276075,0.558813,0,0,0,0,0,0,0,1,0,0,0.909348,0,0.252],
+	complete: [1,0,0,0.414,0.092,0.851,0.269,0,0.391888,0,0,0.787,0.027,0.033,0.082,-0.489,0.463,0.002,0.001,1,0,0,0,0,0.204],
+	explosion: [1,3,0,0.287594,0.51717,0.855,0.117312,0,0,0,0.652,0.66,0,0,0,0,0,-0.146964,-0.004699,    1,0,0,0,0,0.25],
+	hint: [1,3,0.2034,0.519972,0.079301,0.420554,0.503805,0,0.019718,-0.113554,0.02742,-0.960806,0.437405,-0.928749,0.31182,0.242098,-0.059401,0.008261,-0.0102,0.205988,0.046432,0.574843,0.114387,0.001109,0.1068],
+	already: [1,1,0,0.115,0.431,0.526,0.311,0,0,-0.266,0,0,0.542421,0.624539,0,0,0,0,0,1,0,0,0,0,0.184],
+	fail: [1,1,0,0.081582,0.588936,0.495,0.623,0,0,-0.352,0,0,0.542421,0.624539,0,0,0,0,0,1,0,0,0,0,0.1068],
+	really: [1,0,0,0.382534,0,0.663,0.318,0,0.115469,-0.138,0,0,0,0,0.31911,0,0,0,0,0.642664,0,0,0,0,0.1068],
+	kill: [1,0,0,0.089127,0,0.441,0.494,0,-0.333792,0,0,0,0,0,0.080034,0,0,0,0,1,0,0,0.013473,0,0.09],
+	next: [1,0,0,0.362553,0,0.454,0.501627,0,0.205054,0,0,0,0,0,0.578561,0,0,0,0,0.902463,0,0,0.157574,0,0.1068],
+	clear: [1,3,0,0.233,0.316,0.438,0.301,0,-0.294087,0,0,0,0.319083,0.897748,0,0,0.670729,0,0,1,0,0,0,0,0.1068],
+	score: [1,0,0,0.353496,0,0.472,0.404228,0,0.391888,0,0,0,0,0,0.174445,0,0.527907,0,0,1,0,0,0,0,0.1068],
+	click: [1,1,0,0.081582,0.588936,0.495,0.623,0,0,0,0,0,0.542421,0.624539,0,0,0,0,0,1,0,0,0,0,0.1068],
+	shuffle: [1,1,0,0.19396,0,0.463777,0.225533,0,0.307713,0,0,0,0,0,1,0,0.578735,0,0,1,0,0,0,0,0.134],
+}
+
+
+
+
+/////////////////////////////////
+// JSFXR
+
+var SOUNDS_ENABLED = true;
+var PARAMS;
+if(typeof Params !== "undefined"){
+	PARAMS = new Params();
+}else{
+	SOUNDS_ENABLED = false;
+}
+var SOUND;
+var SOUND_VOL = 0.1068; // see sfxr.js (var volume) for volume adjusting for browser. this changes the wav file but doesnt work well because it clips the sounds at too loud or low volumes.
+var SAMPLE_RATE = 44100;
+var SAMPLE_SIZE = 8;
+
+// JSFXR
+/////////////////////////////////
+
+
+
+String.prototype.shuffle = function(){
+    var a = this.split(""),
+        n = a.length;
+
+    for(var i = n - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var tmp = a[i];
+        a[i] = a[j];
+        a[j] = tmp;
+    }
+    return a.join("");
+}
+
+
+
+
+function generate_sounds(){
+	if(SOUNDS_ENABLED){
+		for(var soundName in SOUNDS) {
+			if(SOUNDS.hasOwnProperty(soundName)){
+				console.log("Generating sound "+soundName);
+				generate_sound_caches(soundName);
+			}
+		}
+	}
+}
+
+
+function generate_sound_caches(soundName){
+	if(SOUNDS_ENABLED){
+		let newPARAMS = SOUNDS[soundName];
+		
+		if(newPARAMS[0] != 1){
+			console.log("unknown sound version '"+newPARAMS[0]+"'");
+			console.log(newPARAMS);
+			return;
+		}
+		
+		let order = ['jsfxr_version', 'wave_type', 'p_env_attack','p_env_sustain','p_env_punch','p_env_decay','p_base_freq','p_freq_limit','p_freq_ramp','p_freq_dramp','p_vib_strength','p_vib_speed','p_arp_mod','p_arp_speed','p_duty','p_duty_ramp','p_repeat_speed','p_pha_offset','p_pha_ramp','p_lpf_freq','p_lpf_ramp','p_lpf_resonance','p_hpf_freq','p_hpf_ramp','sound_vol'];
+		
+		let output = {};
+		output['oldParams'] = true;
+		output['sample_rate'] = 44100;
+		output['sample_size'] = 8;
+
+		for(let i = 1; i < order.length; i++){
+			output[order[i]] = newPARAMS[i];
+		}
+
+		PARAMS.fromJSON(output);
+		
+		if(typeof CACHED_SOUND_EFFECTS[soundName] === "undefined"){
+			CACHED_SOUND_EFFECTS[soundName] = {};
+		}
+		
+		SOUND = new SoundEffect(PARAMS).generate();
+		CACHED_SOUND_EFFECTS[soundName]['sound'] = SOUND;
+		CACHED_SOUND_EFFECTS[soundName]['params'] = PARAMS;
+	}
+}
+
+
+function play_sound(soundName){
+	if(SOUNDS_ENABLED){
+		if(typeof CACHED_SOUND_EFFECTS[soundName] === "undefined"){
+			return;
+		}
+		SOUND = CACHED_SOUND_EFFECTS[soundName]['sound'];
+		SOUND.getAudio().play();
+		
+		//console.log("CACHED_SOUND_EFFECTS:");
+		//console.log(CACHED_SOUND_EFFECTS);
+	}
+}
+
+
+
+
+function ran(range){
+	return Math.floor(Math.random()*range);
+}
+
+function substr_count(string, subString, allowOverlapping){
+    string += "";
+    subString += "";
+    if (subString.length <= 0) return (string.length + 1);
+
+    var n = 0,
+        pos = 0,
+        step = allowOverlapping ? 1 : subString.length;
+
+    while (true) {
+        pos = string.indexOf(subString, pos);
+        if (pos >= 0) {
+            ++n;
+            pos += step;
+        } else break;
+    }
+    return n;
+}
+
+function sort_by_length_desc(a, b){
+	return b.length - a.length;
+}
+
+function totals_sort(a, b){
+	return b[0] - a[0];
+}
+
+
+function get_possible_words(rand_word, minlen){
+	if(typeof minlen === "undefined"){
+		minlen = 1;
+	}
+	let foundwords = [];
+	
+	for(let i = 0; i < WORDS.length; i++){
+		let word = WORDS[i];
+		let found = false;
+		for(let p = 0; p < word.length; p++){
+			// random word doesnt have some letter, ignore these:
+			if(rand_word.indexOf(word[p]) === -1){
+				found = true;
+				break;
+			}
+		}
+		if(!found){
+			if(word != rand_word && word.length >= minlen){
+				// check if letter amounts match:
+				let wrong_amount = false;
+			
+				for(let p = 0; p < word.length; p++){
+					let occ1 = substr_count(word, word[p]);
+					let occ2 = substr_count(rand_word, word[p]);
+					if(occ1 > occ2){
+						wrong_amount = true;
+						break;
+					}
+				}
+				
+				if(!wrong_amount){
+					foundwords.push(word);
+				}
+			}
+		}
+	}
+	
+	return foundwords;
+}
+
+
+
+
+
+function take_letters_from_bag(word){
+	let taken_letters = "";
+	for(let p = 0; p < word.length; p++){
+		let letter = word[p];
+		// find and delete letter from bag:
+		for(let i = 0; i < LETTERBAG.length; i++){
+			if(LETTERBAG[i] == letter){
+				taken_letters += letter;
+				LETTERBAG.splice(i, 1); // remove element from array.
+				break;
+			}
+		}
+	}
+	return taken_letters;
+}
+
+
+
+function take_letter_from_bag(letter){
+	let found_letter = null;
+	for(let i = 0; i < LETTERBAG.length; i++){
+		if(LETTERBAG[i] == letter){
+			found_letter = letter;
+			LETTERBAG.splice(i, 1); // remove element from array.
+			break;
+		}
+	}
+	return found_letter;
+}
+
+
+function set_word_buttons(){
+
+	$("#word_from").empty();
+	let letcounts = {};
+	for(let i = 0; i < CURWORD.length; i++){
+		let letter = CURWORD[i];
+		let letter_points = get_letter_points(letter);
+		if(typeof letcounts[letter] === "undefined"){
+			letcounts[letter] = 0;
+		}
+		letcounts[letter]++;
+		let nth = letcounts[letter];
+		$("#word_from").append("<span class='letter letter_"+letter+"_"+nth+"' data-letter='"+letter+"' data-fromid='"+letter+"_"+nth+"'><span class='letter_text'>"+letter+"</span><sub class='sub'>"+letter_points+"</sub></span>");
+	}
+
+}
+
+
+
+
+function render_guess(){
+	$("#current_guess").empty();
+	let empty_letters = MIN_LEN-GUESS.length;
+	if(empty_letters > 0){
+		for(let i = 0; i < empty_letters; i++){
+			$("#current_guess").append($("<span class='letter linear empty'></span>").html("&nbsp;"));
+		}
+	}
+	for(let i = 0; i < GUESS.length; i++){
+		let data = GUESS[i];
+		let letter = data.letter;
+		let fromid = data.fromid;
+		let letter_points = get_letter_points(letter);
+		$("#current_guess").append("<span class='letter linear guess guess_"+fromid+"' data-index='"+i+"' data-letter='"+letter+"' data-fromid='"+fromid+"'><span class='letter_text'>"+letter+"</span><sub class='sub'>"+letter_points+"</sub></span>");
+	}
+
+	render_remaining();
+	update_ui();
+}
+
+
+function guess_to_str(){
+	let out = "";
+	for(let i = 0; i < GUESS.length; i++){
+		out += GUESS[i].letter;
+	}
+	return out;
+}
+
+
+$(document).on("click", ".letter", function(e){
+	if(!$(this).hasClass("empty")){
+		if(typeof GUESSED[CURWORD_UNSUFFLED] === "undefined"){
+			GUESSED[CURWORD_UNSUFFLED] = [];
+		}
+		
+		let clicked_letter = $(this).data("letter");
+		
+		let sound = "click";
+		
+		if($(this).hasClass("guess")){
+			sound = "kill";
+			let index = $(this).data("index");
+			let fromid = $(this).data("fromid"); // links to list of letters clickable atm.
+			$(".letter_"+fromid).removeClass("clicked"); // unclick it (brighten the colors).
+			GUESS.splice(index, 1);
+		}else{
+			// if clicked letterlist:
+			let c1 = substr_count(CURWORD, clicked_letter);
+			let c2 = substr_count(guess_to_str(), clicked_letter);
+			
+			let take_back = false;
+			
+			// if we didnt exceed letter amount of this type:
+			if(c1 > c2){
+				let allow_push = true;
+				if($(this).hasClass("clicked")){
+					// maybe later make it possible to enable/disable this prevention
+					allow_push = false;
+				}
+				
+				if(allow_push){
+					$(this).addClass("clicked"); // set clicked (dark)
+					GUESS.push({
+						'letter': clicked_letter, 
+						'fromid': $(this).data("fromid"),
+					});
+				}else{
+					//sound = "click";
+					take_back = true;
+				}
+			}else{
+				//sound = "click";
+				take_back = true;
+			}
+			
+			if(take_back){
+				sound = "kill";
+				// take letter back from guess word:
+				$(this).removeClass("clicked");
+				let fromid = $(this).data("fromid");
+				let index = $(".guess_"+fromid).data("index");
+				GUESS.splice(index, 1);
+			}
+		}
+		
+		////////////////////////////////////////////////////////////////
+		// all guess modifications must be done before this line!
+		//
+		let GUESS_STR = guess_to_str();
+
+
+		$("#current_guess").removeClass("blink_me");
+		// no idea why i cant remove it just before adding it... this is only way it to work.
+		$("#curscore").removeClass("scoreblink");
+		$("#scores").removeClass("scoreblink2");
+		
+		if(GUESS_STR == CURWORD_UNSUFFLED){
+			sound = "really";
+			//console.log(GUESS_STR+" == "+CURWORD_UNSUFFLED);
+		}else{
+			//console.log(GUESS_STR+" != "+CURWORD_UNSUFFLED);
+			// check guess:
+			let correct_guess = (POSSIBLE.includes(GUESS_STR) && GUESS_STR.length >= MIN_LEN);
+			let already_guessed = GUESSED[CURWORD_UNSUFFLED].includes(GUESS_STR);
+
+			if(correct_guess){
+				if(already_guessed){
+					sound = "already";
+				}else{
+					sound = "score";
+
+					$("#current_guess").removeClass("blink_me");
+					setTimeout(function(){
+						$("#current_guess").addClass("blink_me");
+					}, 100);
+					
+					GUESSED[CURWORD_UNSUFFLED].push(GUESS_STR);
+					
+					let extraletters = GUESS_STR.length-MIN_LEN; // guess = 5, min = 5, extra = 0
+					let score_add = 0;
+					
+					if(PLAY_STYLE == 0){
+						
+						// diffs:           2   4  6  8  10     12  14  16  18  20
+						//let scorelist = [1, 3, 7, 13, 21, 31, 43, 57, 73, 91, 111];
+						let scorelist   = [10, 31, 62, 113, 244, 310, 430, 570, 730, 910, 1110];
+						score_add = scorelist[extraletters];
+						draw_random_star(extraletters);
+					}else if(PLAY_STYLE == 1){
+						//console.log(GUESS_STR+":");
+						for(let i = 0; i < GUESS_STR.length; i++){
+							let letter = GUESS_STR[i];
+							if(scrabble_letters.hasOwnProperty(letter)){
+								score_add += scrabble_letters[letter].score;
+								//console.log(letter+" = "+scrabble_letters[letter].score);
+							}
+						}
+						draw_random_star(extraletters);
+					}
+					
+					
+					$("#scores").removeClass("invisible");
+
+					
+					player_score += score_add;
+					push_mywordlist(score_add);
+					
+					
+					//for(let i = 1; i < 100; i++){
+					//	push_mywordlist(i);
+					//}
+					
+					if(PLAY_STYLE == 1){
+						take_letters_from_bag(GUESS_STR);
+					}
+					
+
+					$("#curscore").html("+"+score_add);
+					
+					$("#curscore").removeClass("scoreblink");
+					setTimeout(function(){
+						$("#curscore").addClass("scoreblink");
+					}, 100);
+
+					$("#scores").removeClass("scoreblink2");
+					setTimeout(function(){
+						$("#scores").addClass("scoreblink2");
+					}, 100);
+					
+					$("#sanakirja_link").html(sanakirjalink(GUESS_STR, GUESS_STR));
+					$("#sanakirja_wrap").removeClass("invisible");
+					
+					let remaining = get_remaining_guesses();
+					if(remaining.length == 0){
+						play_sound("complete");
+
+						$("#new_word").removeClass("completed_blink");
+						setTimeout(function(){
+							$("#new_word").addClass("completed_blink");
+						}, 100);
+
+						$("#bar_done").removeClass("completed_blink_bar");
+						setTimeout(function(){
+							$("#bar_done").addClass("completed_blink_bar");
+						}, 100);
+					}
+				}
+			}
+		}
+
+		play_sound(sound);
+		
+		render_guess();
+	}
+});
+
+
+
+
+function sanakirjalink(word, inside){
+	//return "<a href='https://www.suomisanakirja.fi/amp/"+word+"' target='reference'>"+inside+"</a>";
+	return "<a href='https://www.kielitoimistonsanakirja.fi/#/"+word+"?searchMode=all' target='reference'>"+inside+"</a>";
+}
+
+
+function clear_mywordlist(){
+	$("#wordlist").empty();
+}
+
+function push_mywordlist(last_score){
+	let words = GUESSED[CURWORD_UNSUFFLED];
+	let last_word = words[words.length-1];
+	$("#wordlist").prepend($("<div>"+sanakirjalink(last_word, "+"+last_score+" "+last_word)+"</div>"));
+}
+
+
+
+function update_ui(){
+	let GUESS_STR = guess_to_str();
+	
+	if(GUESS_STR.length > 0){
+		$("#clear_guess").removeClass("disabled");
+	}else{
+		$("#clear_guess").addClass("disabled");
+	}
+	
+	if(GUESS_STR == CURWORD_UNSUFFLED){
+		$(".really").removeClass("invisible");
+	}else{
+		$(".really").addClass("invisible");
+	}
+	
+	$("#scores").html(player_score);
+	
+}
+
+function shuffleArray(array) {
+    for (var i = array.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var temp = array[i];
+        array[i] = array[j];
+        array[j] = temp;
+    }
+}
+
+
+function give_hint(hint){
+	//console.log("hint = "+hint+" = .letter_"+hint[0]);
+	set_word_buttons();
+	let letcounts = {};
+	letcounts[hint[0]] = 0;
+	letcounts[hint[1]] = 0;
+	letcounts[hint[2]] = 0;
+	
+	letcounts[hint[0]]++;
+	$('.letter_'+hint[0]+"_"+letcounts[hint[0]]).addClass("hint_blink1");
+	
+	letcounts[hint[1]]++;
+	$('.letter_'+hint[1]+"_"+letcounts[hint[1]]).addClass("hint_blink2");
+	
+	letcounts[hint[2]]++;
+	$('.letter_'+hint[2]+"_"+letcounts[hint[2]]).addClass("hint_blink3");
+}
+
+
+
+$(document).on("click", "#give_hint", function(e){
+	let remaining = get_remaining_guesses();
+
+	if(remaining.length > 0){
+		shuffleArray(remaining);
+		let hint = remaining[0];
+		give_hint(hint);
+		play_sound("hint");
+	}
+});
+
+
+
+$(document).on("click", "#mywords", function(e){
+	wordlist_visible ^= 1;
+	if(wordlist_visible){
+		$("#wordlist").show();
+	}else{
+		$("#wordlist").hide();
+	}
+	play_sound("showhide");
+});
+
+
+
+function update_play_style(){
+	if(PLAY_STYLE == 0){
+		MINPOSSIBLE = 20;
+		MIN_LEN = 5;
+		MAX_LEN = 9;
+	}else if(PLAY_STYLE == 1){
+		MINPOSSIBLE = 20;
+		MIN_LEN = 3;
+		MAX_LEN = 9;
+	}
+	if(PLAY_STYLE == 0){
+		$("#changestyle").html("Norm");
+		$("#game").removeClass("style_scrabble");
+	}else if(PLAY_STYLE == 1){
+		$("#changestyle").html("Scra");
+		$("#game").addClass("style_scrabble");
+	}
+	render_guess();
+}
+
+// change_style change style
+$(document).on("click", "#changestyle", function(e){
+	PLAY_STYLE ^= 1;
+	update_play_style();
+
+	play_sound("changestyle");
+});
+
+$(document).on("click", "#randomize", function(e){
+	CURWORD = CURWORD.shuffle();
+	set_word_buttons();
+	play_sound("shuffle");
+});
+
+
+$(document).on("click", "#clear_guess", function(e){
+	if(GUESS.length > 0){
+		GUESS = [];
+		set_word_buttons();
+		render_guess();
+		play_sound("clear");
+	}
+});
+
+
+
+// new_game new game
+$(document).on("click", "#new_word", function(e){
+	GUESS = [];
+	render_guess();
+	new_random_word();
+	clear_mywordlist();
+	play_sound("next");
+	$("#new_word").removeClass("completed_blink");
+	$("#sanakirja_wrap").addClass("invisible");
+	$("#bar_done").removeClass("completed_blink_bar");
+});
+
+
+
+let cheat_clicks = 0;
+let prev_click_time = 0;
+
+
+function getTimeMillis(){
+	var d = new Date();
+	return d.getTime();
+}
+
+
+
+$(document).on("click", "#possible_count2", function(e){
+	if(getTimeMillis()-prev_click_time < 400){
+		cheat_clicks++;
+		if(cheat_clicks >= 10){
+			cheat_clicks = 0;
+			play_sound("explosion");
+			$("#possible_words").show();
+		}
+	}else{
+		cheat_clicks = 0;
+	}
+	prev_click_time = getTimeMillis();
+});
+
+
+function get_remaining_guesses(){
+	if(typeof GUESSED[CURWORD_UNSUFFLED] === "undefined"){
+		GUESSED[CURWORD_UNSUFFLED] = [];
+	}
+	let cur_guesses = GUESSED[CURWORD_UNSUFFLED];
+	
+	// filter out already guessed words from possible array:
+	let out = [];
+	for(let p = 0; p < POSSIBLE.length; p++){
+		if(!cur_guesses.includes(POSSIBLE[p])){
+			out.push(POSSIBLE[p]);
+		}
+	}
+	return out;
+}
+
+function render_remaining(){
+	let curpossible = get_remaining_guesses();
+	let foundnow = GUESSED[CURWORD_UNSUFFLED].length;
+	let percent = (foundnow/(foundnow+curpossible.length))*100;
+	$('#possible_count1').html("Löydetty: "+foundnow+" kpl");
+	$('#possible_count2').html("Mahdollisia: "+curpossible.length+" kpl");
+	$('#bar_done').css({"width": percent.toFixed(2)+"%"});
+	$('#possible_words').html("<br><br><br><br>"+curpossible.join(", ")+"<br><br>");
+}
+
+/*
+1 pist. A*10, I*10, N*9, S*7, T*9, E*8
+2 pist. K*5, L*5, O*5, Ä*5
+3 pist. U*4, M*3
+4 pist. H*2, J*2, P*2, R*2, U*2, Y*2
+7 pist. D*1, Ö*1
+8 pist. B*1, F*1, G*1
+10 pist. C*1
+0 pist. 2 laattaa
+*/
+
+let scrabble_letters = {
+	'a': {'count': 10, 'score': 1},
+	'i': {'count': 10, 'score': 1},
+	'n': {'count': 9, 'score': 1},
+	's': {'count': 7, 'score': 1},
+	't': {'count': 9, 'score': 1},
+	'e': {'count': 8, 'score': 1},
+	
+	'k': {'count': 5, 'score': 2},
+	'l': {'count': 5, 'score': 2},
+	'o': {'count': 5, 'score': 2},
+	'ä': {'count': 5, 'score': 2},
+
+	'u': {'count': 4, 'score': 3},
+	'm': {'count': 3, 'score': 3},
+	
+	'h': {'count': 2, 'score': 4},
+	'j': {'count': 2, 'score': 4},
+	'p': {'count': 2, 'score': 4},
+	'r': {'count': 2, 'score': 4},
+	'u': {'count': 2, 'score': 4},
+	'y': {'count': 2, 'score': 4},
+	
+	'd': {'count': 1, 'score': 7},
+	'ö': {'count': 1, 'score': 7},
+	
+	'b': {'count': 1, 'score': 8},
+	'f': {'count': 1, 'score': 8},
+	'g': {'count': 1, 'score': 8},
+	
+	'c': {'count': 1, 'score': 10},
+	
+	//' ': {'count': 2, 'score': 0},
+};
+var all_scrabble_letters_arr = [];
+var temp_scrabble_letters_arr = [];
+var LETTERBAG = []; // current letters in the bag. when taken new letters, they are removed from this bag.
+
+
+function build_scrabble_letterlist(){
+	all_scrabble_letters_arr = [];
+	for(let letter in scrabble_letters){
+		let data = scrabble_letters[letter];
+		for(let i = 0; i < data.count; i++){
+			all_scrabble_letters_arr.push(letter);
+		}
+	}
+	temp_scrabble_letters_arr = [...all_scrabble_letters_arr];
+}
+
+function get_letter_points(letter){
+	if(scrabble_letters.hasOwnProperty(letter)){
+		return scrabble_letters[letter].score;
+	}
+	return 0;
+}
+
+
+
+// NOTE: does not remove from LETTERBAG.
+// when using this, the LETTERBAG should be set to full before calling this as a mark for new game starting.
+function random_scrabble_letters(length){
+	if(length > temp_scrabble_letters_arr.length){
+		length = temp_scrabble_letters_arr.length;
+	}
+	shuffleArray(temp_scrabble_letters_arr);
+	
+	let out = "";
+	for(let i = 0; i < length; i++){
+		out += temp_scrabble_letters_arr[i];
+	}
+	
+	return out;
+}
+
+
+
+
+function new_random_word(){
+
+	$("#sanakirja_link").html("");
+	$("#possible_words").hide();
+	
+	// reset array to original on new word:
+	LETTERBAG = [...all_scrabble_letters_arr];
+	
+	POSSIBLE = [];
+	do {
+		if(PLAY_STYLE == 0){
+			CURWORD = WORDS[ran(WORDS.length)];
+		}else if(PLAY_STYLE == 1){
+			CURWORD = random_scrabble_letters(9);
+		}
+		CURWORD_UNSUFFLED = CURWORD;
+		// skip space and dash:
+		let found = false;
+		if(substr_count(CURWORD, "-") > 0) found = true;
+		if(substr_count(CURWORD, " ") > 0) found = true;
+		if(!found){
+			POSSIBLE = get_possible_words(CURWORD, MIN_LEN);
+		}
+	}while(POSSIBLE.length < MINPOSSIBLE);
+	
+	// remove current letters from bag:
+	if(PLAY_STYLE == 1){
+		take_letters_from_bag(CURWORD);
+	}
+	
+	//CURWORD = "ydinsota";
+	//POSSIBLE = get_possible_words(CURWORD, MIN_LEN);
+	
+	POSSIBLE.sort(sort_by_length_desc);
+	POSSIBLE.shift();
+	
+	render_guess();
+	set_word_buttons();
+}
+
+function load_db(){
+	let db_version = 1;
+	let db;
+	const DBOpenRequest = indexedDB.open('test2', db_version);
+
+	DBOpenRequest.onerror = (event) => {
+		console.warn("error loading db");
+		console.warn(event.target.error.name+": "+event.target.error.message);
+	};
+
+	DBOpenRequest.onsuccess = (event) => {
+		console.log("loading db");
+		console.log(event);
+
+		// Store the result of opening the database in the db variable. This is used a lot below
+		db = DBOpenRequest.result;
+
+		console.log("db");
+		console.log(db);
+	};
+
+	DBOpenRequest.onupgradeneeded = function(event) {
+		let db = event.target.result;
+		console.warn("onupgradeneeded");
+		//db.createObjectStore('cachedForms', {keyPath:'id', autoIncrement: true});
+		//dbReady = true;
+	}
+}
+
+
+var canvas = document.querySelector('#canvas');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+var ctx = canvas.getContext('2d');
+	
+
+function get_kxy_angle(angle){
+	this.x = Math.sin((angle-90.0)*(Math.PI/180.0));
+	this.y = Math.cos((angle-90.0)*(Math.PI/180.0));
+}
+
+function ranadd(range){
+	return ((Math.random()-0.5)*2)*range;
+}
+
+function clamp(color){
+	if(color < 0) color = 0;
+	if(color > 255) color = 255;
+	return color;
+}
+
+
+
+function decodeRGBA(argb){
+	this.a = (argb >> 24) & 255;
+	this.r = (argb >> 16) & 255;
+	this.g = (argb >> 8) & 255;
+	this.b = argb & 255;
+}
+
+function encodeRGBA(a,r,g,b){
+	return ((a << 24) | (r << 16) | (g << 8) | b) >>> 0; // ">>> 0" converts to 32bit unsigned integer
+}
+
+function valueBetween(from, to, percent){
+	return (to-from)*percent+from;
+}
+
+function intBetween(from, to, percent){
+	return Math.round(valueBetween(from, to, percent));
+}
+
+// gives gradient color value at specific point of the gradient line.
+function colorBetweenRGBA(from, to, percent){
+	let c1 = new decodeRGBA(from);
+	let c2 = new decodeRGBA(to);
+	return encodeRGBA(
+		intBetween(c1.a, c2.a, percent),
+		intBetween(c1.r, c2.r, percent),
+		intBetween(c1.g, c2.g, percent),
+		intBetween(c1.b, c2.b, percent)
+	);
+}
+
+function colorBetweenRGBA_array(arr, percent){
+	let len = arr.length;
+	let total_gradients = len-1; // 2 colors have 1 gradient, 3 have 2. etc.
+	let step = 1.0/total_gradients;
+	let c1 = Math.floor(percent/step);
+	let c2 = c1+1;
+	if(c2 > len-1){
+		c2 = len-1;
+	}
+	let percent_between = (percent/step)-c1;
+	return colorBetweenRGBA(arr[c1], arr[c2], percent_between);
+}
+
+
+
+function draw_star(x, y, diameter, angle, drawblack, fullopacity){
+	if(typeof drawblack === "undefined"){
+		drawblack = false;
+	}
+	if(typeof fullopacity === "undefined"){
+		fullopacity = true;
+	}
+
+	let linelen = diameter;
+	let hlen = diameter/2;
+
+	x+=0.5;
+	y+=0.5;
+	
+
+	
+	let arr1 = [0xFF0000, 0xFFFF00, 0x00FFFF, 0x0000FF, 0xFF00FF, 0xFF0000];
+	let arr2 = [0xFF8888, 0xFFFF88, 0x88FFFF, 0x8888FF, 0xFF88FF, 0xFF8888];
+	let cindex1 = Math.random();
+	let cindex2 = cindex1+0.05;
+	if(cindex2 > 1){
+		cindex2 = cindex2-1;
+	}
+	let c1 = new decodeRGBA(colorBetweenRGBA_array(arr1, cindex1));
+	let c2 = new decodeRGBA(colorBetweenRGBA_array(arr2, cindex2));
+	
+	let rgb1 = c1.r+","+c1.g+","+c1.b;
+	let rgb2 = c2.r+","+c2.g+","+c2.b;
+	let rgb3 = "255,255,255";
+	
+	if(drawblack){
+		rgb1 = "0,0,0";
+		rgb2 = "0,0,0";
+		rgb3 = "0,0,0";
+	}
+	
+	let opa1;
+	let opa2;
+	
+	if(fullopacity){
+		opa1 = 0.8;
+		opa2 = 0.1;
+	}else{
+		opa1 = 0.2;
+		opa2 = 0.1;
+	}
+
+	{
+		var grad = ctx.createRadialGradient(x, y, 0, x, y, linelen);
+		grad.addColorStop(0, "rgba("+rgb1+","+opa1+")");
+		grad.addColorStop(1, "rgba("+rgb1+",0)");
+		
+		var grad2 = ctx.createRadialGradient(x, y, 0, x, y, linelen);
+		grad2.addColorStop(0, "rgba("+rgb3+","+opa1+")");
+		grad2.addColorStop(1, "rgba("+rgb3+",0)");
+		
+		var grad3 = ctx.createRadialGradient(x, y, 0, x, y, linelen);
+		grad3.addColorStop(0, "rgba("+rgb2+","+opa2+")");
+		grad3.addColorStop(1, "rgba("+rgb2+",0)");
+		
+		
+		
+		ctx.strokeStyle = grad3;
+		
+		ctx.lineWidth = diameter/8;
+		
+		ctx.beginPath();
+		{
+			// 90 deg:
+			let tangle = angle;
+			for(let i = 0; i < 4; i++){
+				let dire = new get_kxy_angle(tangle);
+				
+				let d2 = new get_kxy_angle(tangle-90);
+				let d3 = new get_kxy_angle(tangle+90);
+				
+				let dist = diameter/10;
+				
+				ctx.moveTo(x+d2.x*dist, y+d2.y*dist);
+				ctx.lineTo(x+dire.x*linelen, y+dire.y*linelen);
+				ctx.moveTo(x+d3.x*dist, y+d3.y*dist);
+				ctx.lineTo(x+dire.x*linelen, y+dire.y*linelen);
+				tangle += 90;
+			}
+		}
+		ctx.stroke();
+		
+
+		
+		ctx.strokeStyle = grad;
+		
+		ctx.lineWidth = diameter/15;
+		
+		ctx.beginPath();
+		{
+			// 90 deg:
+			let tangle = angle;
+			for(let i = 0; i < 4; i++){
+				let dire = new get_kxy_angle(tangle);
+				
+				let d2 = new get_kxy_angle(tangle-90);
+				let d3 = new get_kxy_angle(tangle+90);
+				
+				let dist = diameter/30;
+				
+				ctx.moveTo(x+d2.x*dist, y+d2.y*dist);
+				ctx.lineTo(x+dire.x*linelen, y+dire.y*linelen);
+				ctx.moveTo(x+d3.x*dist, y+d3.y*dist);
+				ctx.lineTo(x+dire.x*linelen, y+dire.y*linelen);
+				tangle += 90;
+			}
+		}
+		ctx.stroke();
+		
+		
+		ctx.strokeStyle = grad2;
+		ctx.lineWidth = diameter/20;
+	
+		ctx.beginPath();
+		{
+			// 90 deg:
+			let tangle = angle;
+			for(let i = 0; i < 4; i++){
+				let dire = new get_kxy_angle(tangle);
+				
+				ctx.moveTo(x, y);
+				ctx.lineTo(x+dire.x*linelen, y+dire.y*linelen);
+
+				tangle += 90;
+			}
+		}
+		ctx.stroke();
+
+	}	
+	
+	
+	ctx.lineWidth = diameter/30;
+	
+	{
+		var grad = ctx.createRadialGradient(x, y, 0, x, y, hlen);
+		grad.addColorStop(0, "rgba("+rgb3+","+opa1+")");
+		grad.addColorStop(1, "rgba("+rgb1+",0)");
+		ctx.strokeStyle = grad;
+		
+		ctx.beginPath();
+			// 45 deg:
+			let tangle = angle+45;
+			for(let i = 0; i < 4; i++){
+				let dire = new get_kxy_angle(tangle);
+				ctx.moveTo(x, y);
+				ctx.lineTo(x+dire.x*hlen, y+dire.y*hlen);
+				tangle += 90;
+			}
+		ctx.stroke();
+	}
+}
+
+
+// Will execute myCallback every 0.5 seconds 
+var star_interval = null;
+
+
+var clear_star = 0;
+var star_frames = 20;
+
+var star = {
+	x: 0,
+	y: 0,
+	angle: 0,
+	size: 0,
+	frame: 0,
+};
+
+function draw_star_callback(){
+	if(star.frame >= star_frames){
+		window.clearInterval(star_interval);
+		star_interval = null;
+		// draw last star full opacty:
+		draw_star(star.x, star.y, star.size*(star.frame/star_frames), star.angle, false, true);
+		star.frame++;
+	}else{	
+		draw_star(star.x, star.y, star.size*(star.frame/star_frames), star.angle, false, false);
+		star.frame++;
+		clear_star ^= 1;
+	}
+}
+
+
+
+// i = 0...10 etc.
+function draw_random_star(i){
+	if(star_interval !== null){
+		// if already some star drawing process in progress; finish current star drawing to end size:
+		window.clearInterval(star_interval);
+		star_interval = null;
+		// draw last star full opacty:
+		draw_star(star.x, star.y, star.size, star.angle, false, true);
+		star.frame++;
+	}
+	
+	let x = Math.random()*window.innerWidth;
+	let y = Math.random()*window.innerHeight;
+	let angle = Math.random()*90.0;
+	let lens = [40, 80, 140, 200, 250, 340, 460, 600];
+	
+	if(i < 0) i = 0;
+	if(i > lens.length-1) i = lens.length-1;
+
+	star = {
+		x: x,
+		y: y,
+		size: lens[i],
+		angle: angle,
+		frame: 0,
+	};
+
+	star_interval = window.setInterval(draw_star_callback, 80);
+}
+
+
+function draw_random_star2(i){
+	let x = Math.random()*window.innerWidth;
+	let y = Math.random()*window.innerHeight;
+	let angle = Math.random()*90.0;
+	let lens = [40, 80, 140, 200, 250, 340];
+	
+	if(i < 0) i = 0;
+	if(i > lens.length-1) i = lens-length-1;
+
+	draw_star(x, y, lens[i], angle);
+}
+
+
+
+
+$("#game").click(function(){
+	//draw_random_star(Math.floor(Math.random()*6+1));
+	/*
+	$("#bar_done").removeClass("completed_blink_bar");
+	setTimeout(function(){
+		$("#bar_done").addClass("completed_blink_bar");
+	}, 100);
+	*/
+});
+
+
+window.addEventListener('resize', onWindowResize, false);
+function onWindowResize(){
+	resize_elements();
+}
+
+
+function resize_elements(){
+	let word_from_w = $("#word_from").outerWidth();
+	let game_w = $("#game").outerWidth();
+
+	let wordlistwidth = game_w-word_from_w-20;
+	$("#wordlist").css("width", wordlistwidth+"px");
+}
+
+
+
+$(document).ready(function(){
+	console.log("ready");
+
+	resize_elements();
+	update_play_style();
+		
+	WORDS = [];
+	for(let i = 0; i < ALL_WORDS.length; i++){
+		if(ALL_WORDS[i].length >= MIN_LEN && ALL_WORDS[i].length <= MAX_LEN){
+			WORDS.push(ALL_WORDS[i]);
+		}
+	}
+
+	build_scrabble_letterlist();
+	
+	random_scrabble_letters();
+	
+	generate_sounds();
+	
+	
+	//load_db();
+	
+
+
+	let devmode = 0;
+	if(devmode){
+		for(let i = 0; i < 120; i++){
+			let x = Math.random()*window.innerWidth;
+			let y = Math.random()*window.innerHeight;
+			let angle = Math.random()*90.0;
+			let size = 220+Math.random()*120;
+			draw_star(x, y, size, angle);
+		}
+	}
+	
+
+	
+	new_random_word();
+});
+
+
+
+$(window).bind('beforeunload', function(){
+	return 'Are you sure you want to leave?'; // modern browsers will show their own message instead of this.
+});
+
+
+
+</script>
+
+
+
+
+</body>
+</html>
